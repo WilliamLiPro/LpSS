@@ -10,7 +10,8 @@ The corresponding paper is under review of Nature Communication
 
 
 # Results
-
+![Procedures of LpSS](https://github.com/WilliamLiPro/LpSS/blob/master/result/Fig.1.emf)
+![Weight distribution of a neuron with respect of p](https://github.com/WilliamLiPro/LpSS/blob/master/result/Fig.2.eps)
 
 # References
 > 1.	Athanasios, V., Nikolaos, D., Anastasios, D., & Eftychios, P. Deep learning for computer vision: a brief review. Computational Intelligence and Neuroscience, 7068349-7068349 (2018).
