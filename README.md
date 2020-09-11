@@ -3,7 +3,7 @@
 Controlling Sparsity of Neural Network with Weight Constrained on Unit Lp-Sphere.  
 For more information, please contact author by: williamli_pro@163.com
 
-The corresponding paper has been submitted to Nature Communication 
+The corresponding paper is under review of Nature Communication 
 
 
 # Abstract
