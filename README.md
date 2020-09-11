@@ -10,7 +10,7 @@ The corresponding paper is under review of Nature Communication
 
 
 # Results
-![Procedures of LpSS](https://github.com/WilliamLiPro/LpSS/blob/master/result/Procedures.png) 
+![Procedures of LpSS](https://github.com/WilliamLiPro/LpSS/blob/master/result/Procedures.png)
 ![Weight distribution of a neuron with respect of p](https://github.com/WilliamLiPro/LpSS/blob/master/result/weight_with_p.jpg)
 
 # References
