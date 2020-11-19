@@ -30,13 +30,14 @@ class LpCGD(Optimizer):
         net_lp (list): Lp norm of weight for each layer
         lr (float): learning rate
         lr_decay (float): decay of learning rate (default: 0)
+        free_n (int): number of layers freely from constraint, count from the output layer (default: 2)
         momentum (float, optional): momentum factor (default: 0)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
         dampening (float, optional): dampening for momentum (default: 0)
         nesterov (bool, optional): enables Nesterov momentum (default: False)
     """
 
-    def __init__(self, model, net_lp, lr=required, lr_decay=0, momentum=0, dampening=0,
+    def __init__(self, model, net_lp, lr=required, lr_decay=0, free_n=2, momentum=0, dampening=0,
                  weight_decay=0, nesterov=False):
 
         # other set
@@ -57,6 +58,7 @@ class LpCGD(Optimizer):
         self.sum_iter = 0
         self.general_norm = 1
         self.net_lp = net_lp
+        self.free_n = free_n
 
         namelist = []
         for name, param in model.named_parameters():
@@ -74,7 +76,7 @@ class LpCGD(Optimizer):
         # fill the lp for normalization
         layer_n = len(self.name_list)
         net_lp = [None] * layer_n
-        n_constrained = layer_n - 2
+        n_constrained = layer_n - self.free_n
 
         count = 0
         for i, name in enumerate(self.name_list):
