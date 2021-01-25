@@ -1,4 +1,4 @@
-Lp-spherical Sparse Training
+Lp-spherical Sparse Learning
 =======================================
 
 Controlling Sparsity of Neural Network with Weight Constrained on Unit Lp-Sphere.  
