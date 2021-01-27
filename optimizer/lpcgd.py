@@ -1,22 +1,6 @@
-# Copyright 2020 LpSS Authors.
-# williamli_pro@163.com
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import torch
 from torch.optim.optimizer import Optimizer, required
-import optimizer.myFunction as myF
-
+import myFunction as myF
 
 class LpCGD(Optimizer):
     r"""Implements Lp constrained gradient descent (optionally with momentum).
@@ -30,15 +14,16 @@ class LpCGD(Optimizer):
         net_lp (list): Lp norm of weight for each layer
         lr (float): learning rate
         lr_decay (float): decay of learning rate (default: 0)
-        free_n (int): number of layers freely from constraint, count from the output layer (default: 2)
         momentum (float, optional): momentum factor (default: 0)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
         dampening (float, optional): dampening for momentum (default: 0)
         nesterov (bool, optional): enables Nesterov momentum (default: False)
     """
 
-    def __init__(self, model, net_lp, lr=required, lr_decay=0, free_n=2, momentum=0, dampening=0,
-                 weight_decay=0, nesterov=False):
+    def __init__(self, model, net_lp, lp_layers: list = ['conv', 'fc'], min_input_channel: int = 2, forbid_layers: int = 1,
+                 lr=required, lr_decay: float = 0,
+                 momentum: float = 0, dampening: float = 0,
+                 weight_decay: float = 0, nesterov=False):
 
         # other set
         if lr is not required and lr < 0.0:
@@ -58,7 +43,9 @@ class LpCGD(Optimizer):
         self.sum_iter = 0
         self.general_norm = 1
         self.net_lp = net_lp
-        self.free_n = free_n
+        self.lp_layers = lp_layers
+        self.min_input_channel = min_input_channel
+        self.forbid_layers = forbid_layers * 2
 
         namelist = []
         for name, param in model.named_parameters():
@@ -76,14 +63,13 @@ class LpCGD(Optimizer):
         # fill the lp for normalization
         layer_n = len(self.name_list)
         net_lp = [None] * layer_n
-        n_constrained = layer_n - self.free_n
 
         count = 0
         for i, name in enumerate(self.name_list):
-            if i >= n_constrained:
+            if i >= layer_n - self.forbid_layers:
                 break
 
-            if ('conv' in name or 'fc' in name) and 'weight' in name:
+            if (True in [lp_layer in name for lp_layer in self.lp_layers]) and 'weight' in name:
                 net_lp[i] = self.net_lp[count]
                 count += 1
 
@@ -95,6 +81,9 @@ class LpCGD(Optimizer):
                 if p.data is None or net_lp[i] is None:
                     continue
                 cp = p.data
+                if cp.dim() < 2 or cp.dim() > 4 or cp.size(1) < self.min_input_channel:
+                    net_lp[i] = None
+                    continue
                 p.data, _ = myF.LpNormalize_cnn(cp, net_lp[i])
 
     def __setstate__(self, state):
@@ -166,7 +155,7 @@ class LpCGD(Optimizer):
                     param_state['feature_vec'] = ftv
                     p.data = ftv.sign().mul(ftv.abs().pow(1/(lp - 1)))
                 else:
-                    # this is bias
+                    # this is bias and other parameters
                     b = p.data
                     b.add_(-cur_lr, d_p)
 
@@ -194,7 +183,8 @@ class LpCGDw(Optimizer):
         nesterov (bool, optional): enables Nesterov momentum (default: False)
     """
 
-    def __init__(self, model, net_lp, lr=required, lr_decay=0, momentum=0, dampening=0,
+    def __init__(self, model, net_lp, lp_layers: list = ['conv', 'fc'], forbid_layers: int = 1,
+                 lr=required, lr_decay=0, momentum=0, dampening=0,
                  weight_decay=0, nesterov=False):
 
         # other set
@@ -216,6 +206,8 @@ class LpCGDw(Optimizer):
         self.sum_iter = 0
         self.general_norm = 1
         self.net_lp = net_lp
+        self.lp_layers = lp_layers
+        self.forbid_layers = forbid_layers
 
         namelist = []
         for name, param in model.named_parameters():
@@ -236,7 +228,10 @@ class LpCGDw(Optimizer):
 
         count = 0
         for i, name in enumerate(self.name_list):
-            if ('conv' in name or 'fc' in name) and 'weight' in name:
+            if i >= layer_n - self.forbid_layers:
+                break
+
+            if (True in [lp_layer in name for lp_layer in self.lp_layers]) and 'weight' in name:
                 net_lp[i] = self.net_lp[count]
                 count += 1
 
@@ -248,10 +243,13 @@ class LpCGDw(Optimizer):
                 if p.data is None or net_lp[i] is None:
                     continue
                 cp = p.data
+                if cp.dim() < 2 or cp.dim() > 4:
+                    net_lp[i] = None
+                    continue
                 p.data, _ = myF.LpNormalize_cnn(cp, net_lp[i])
 
     def __setstate__(self, state):
-        super(LpCGD, self).__setstate__(state)
+        super(LpCGDw, self).__setstate__(state)
         for group in self.param_groups:
             group.setdefault('nesterov', False)
 
@@ -317,152 +315,6 @@ class LpCGDw(Optimizer):
                     p.data, _ = myF.LpNormalize_cnn(w, lp, 1)
                 else:
                     # this is bias update or other kind of weight
-                    b = p.data
-                    b.add_(-cur_lr, d_p)
-
-        return loss
-
-
-class LpSGD(Optimizer):
-    r"""Implements Lp constrained gradient descent (optionally with momentum).
-
-    Nesterov momentum is based on the formula from
-    `On the importance of initialization and momentum in deep learning`__.
-
-    Args:
-        params (iterable): iterable of parameters to optimize or dicts defining
-            parameter groups
-        net_lp (list): Lp norm of weight for each layer
-        lr (float): learning rate
-        lr_decay (float): decay of learning rate (default: 0)
-        momentum (float, optional): momentum factor (default: 0)
-        weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
-        dampening (float, optional): dampening for momentum (default: 0)
-        nesterov (bool, optional): enables Nesterov momentum (default: False)
-    """
-
-    def __init__(self, model, net_lp, lr=required, lr_decay=0, momentum=0, dampening=0,
-                 weight_decay=0, nesterov=False):
-
-        # other set
-        if lr is not required and lr < 0.0:
-            raise ValueError("Invalid learning rate: {}".format(lr))
-        if lr_decay < 0.0:
-            raise ValueError("Invalid lr_decay rate: {}".format(lr_decay))
-        if momentum < 0.0:
-            raise ValueError("Invalid momentum value: {}".format(momentum))
-        if weight_decay < 0.0:
-            raise ValueError("Invalid weight_decay value: {}".format(weight_decay))
-
-        defaults = dict(lr=lr, lr_decay=lr_decay, momentum=momentum, dampening=dampening,
-                        weight_decay=weight_decay, nesterov=nesterov)
-        if nesterov and (momentum <= 0 or dampening != 0):
-            raise ValueError("Nesterov momentum requires a momentum and zero dampening")
-
-        self.sum_iter = 0
-        self.general_norm = 1
-        self.net_lp = net_lp
-
-        namelist = []
-        for name, param in model.named_parameters():
-            namelist.append(name)
-
-        self.name_list = namelist
-
-        super(LpSGD, self).__init__(model.parameters(), defaults)
-
-        self.weightNormalize()
-
-    def weightNormalize(self):
-        # normalized weight
-
-        # fill the lp for normalization
-        layer_n = len(self.name_list)
-        net_lp = [None] * layer_n
-
-        count = 0
-        for i, name in enumerate(self.name_list):
-            if ('conv' in name or 'fc' in name) and 'weight' in name:
-                net_lp[i] = self.net_lp[count]
-                count += 1
-
-        self.net_lp = net_lp
-
-        # normalized weight
-        # for group in self.param_groups:
-        #     for i, p in enumerate(group['params']):
-        #         if p.data is None or net_lp[i] is None:
-        #             continue
-        #         cp = p.data
-        #         p.data, _ = myF.LpNormalize_cnn(cp, net_lp[i])
-
-    def __setstate__(self, state):
-        super(LpSGD, self).__setstate__(state)
-        for group in self.param_groups:
-            group.setdefault('nesterov', False)
-
-    def step(self, closure=None):
-        """Performs a single optimization step.
-
-        Arguments:
-            closure (callable, optional): A closure that reevaluates the model
-                and returns the loss.
-        """
-        loss = None
-        if closure is not None:
-            loss = closure()
-
-        net_lp = self.net_lp
-
-        for group in self.param_groups:
-            # update learning ratio
-            cur_lr = group['lr'] / (1 + group['lr_decay'] * self.sum_iter)
-            self.sum_iter += 1
-
-            # params
-            weight_decay = group['weight_decay']
-            momentum = group['momentum']
-            dampening = group['dampening']
-            nesterov = group['nesterov']
-
-            for i, p in enumerate(group['params']):
-                # gradient
-                if p.grad is None:
-                    continue
-                d_p = p.grad.data
-                if weight_decay != 0:
-                    d_p.add_(weight_decay, p.data)
-
-                param_state = self.state[p]
-                if momentum != 0:
-                    if 'momentum_buffer' not in param_state:
-                        buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
-                        buf.add_(d_p)
-                    else:
-                        buf = param_state['momentum_buffer']
-                        buf.mul_(momentum).add_(1 - dampening, d_p)
-                    if nesterov:
-                        d_p = d_p.add(momentum, buf)
-                    else:
-                        d_p = buf
-
-                # normalized gradient
-                lp = net_lp[i]
-                if lp is not None:
-                    # this is the update of normalized weight
-                    # update feature vector
-                    w = p.data
-
-                    if 'feature_vec' not in param_state:
-                        ftv = param_state['feature_vec'] = w.sign().mul(w.abs().pow(lp-1))
-                    else:
-                        ftv = param_state['feature_vec']
-
-                    ftv = ftv.add(-cur_lr, d_p)
-                    param_state['feature_vec'] = ftv
-                    p.data = ftv.sign().mul(ftv.abs().pow(1/(lp - 1)))
-                else:
-                    # this is bias
                     b = p.data
                     b.add_(-cur_lr, d_p)
 
